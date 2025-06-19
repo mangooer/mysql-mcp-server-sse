@@ -3,6 +3,8 @@ import logging
 from typing import Any, Dict, Optional
 from mcp.server.fastmcp import FastMCP
 from src.db.mysql_operations import get_db_connection, execute_query
+from src.security.database_scope_checker import create_database_checker
+from src.config import SecurityConfig, DatabaseConfig
 import aiomysql
 
 from .metadata_base_tool import MetadataToolBase
@@ -21,6 +23,14 @@ def register_mysql_tool(mcp: FastMCP):
     """
     logger.debug("注册MySQL查询工具...")
     
+    # 创建数据库范围检查器
+    database_checker = None
+    if SecurityConfig.ENABLE_DATABASE_ISOLATION and DatabaseConfig.DATABASE:
+        database_checker = create_database_checker(
+            allowed_database=DatabaseConfig.DATABASE,
+            access_level=SecurityConfig.DATABASE_ACCESS_LEVEL
+        )
+    
     @mcp.tool()
     @MetadataToolBase.handle_query_error
     async def mysql_query(query: str, params: Optional[Dict[str, Any]] = None) -> str:
@@ -35,6 +45,13 @@ def register_mysql_tool(mcp: FastMCP):
             查询结果的JSON字符串
         """
         logger.debug(f"执行MySQL查询: {query}, 参数: {params}")
+        
+        # 检查数据库隔离限制
+        if database_checker:
+            is_allowed, violations = database_checker.check_query(query)
+            if not is_allowed:
+                violation_details = "; ".join(violations)
+                raise ValueError(f"数据库隔离限制: {violation_details}")
         
         async with get_db_connection() as connection:
             results = await execute_query(connection, query, params)

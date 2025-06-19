@@ -12,8 +12,10 @@ from mcp.server.fastmcp import FastMCP
 
 from .metadata_base_tool import MetadataToolBase, ParameterValidationError, QueryExecutionError
 from src.security.sql_analyzer import EnvironmentType
+from src.security.database_scope_checker import create_database_checker
 from src.db.mysql_operations import get_db_connection, execute_query
 from src.validators import SQLValidators
+from src.config import SecurityConfig, DatabaseConfig
 
 logger = logging.getLogger("mysql_server")
 
@@ -131,6 +133,14 @@ def register_info_tools(mcp: FastMCP):
     """
     logger.debug("注册MySQL数据库信息查询工具...")
     
+    # 创建数据库范围检查器
+    database_checker = None
+    if SecurityConfig.ENABLE_DATABASE_ISOLATION and DatabaseConfig.DATABASE:
+        database_checker = create_database_checker(
+            allowed_database=DatabaseConfig.DATABASE,
+            access_level=SecurityConfig.DATABASE_ACCESS_LEVEL
+        )
+    
     @mcp.tool()
     @MetadataToolBase.handle_query_error
     async def mysql_show_databases(pattern: Optional[str] = None, limit: int = 100, exclude_system: bool = True) -> str:
@@ -158,6 +168,14 @@ def register_info_tools(mcp: FastMCP):
             lambda x: SQLValidators.validate_integer(x, min_value=0),
             "返回结果的最大数量必须是非负整数"
         )
+        
+        # 检查数据库隔离限制
+        if database_checker:
+            query_to_check = "SHOW DATABASES"
+            is_allowed, violations = database_checker.check_query(query_to_check)
+            if not is_allowed:
+                violation_details = "; ".join(violations)
+                raise SecurityError(f"数据库隔离限制: {violation_details}")
         
         # 构建基础查询
         query = "SHOW DATABASES"

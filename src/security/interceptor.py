@@ -1,9 +1,10 @@
 import logging
 from typing import List, Dict
 
-from ..config import SecurityConfig, SQLConfig
+from ..config import SecurityConfig, SQLConfig, DatabaseConfig
 from .sql_analyzer import SQLOperationType, SQLRiskLevel
 from .sql_parser import SQLParser
+from .database_scope_checker import DatabaseScopeChecker, DatabaseScopeViolation, create_database_checker
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,15 @@ class SQLInterceptor:
         self.analyzer = analyzer
         # 设置最大SQL长度限制
         self.max_sql_length = SecurityConfig.MAX_SQL_LENGTH
+        
+        # 初始化数据库范围检查器
+        self.database_checker = None
+        if SecurityConfig.ENABLE_DATABASE_ISOLATION and DatabaseConfig.DATABASE:
+            self.database_checker = create_database_checker(
+                allowed_database=DatabaseConfig.DATABASE,
+                access_level=SecurityConfig.DATABASE_ACCESS_LEVEL
+            )
+            logger.info(f"数据库隔离已启用: 允许数据库={DatabaseConfig.DATABASE}, 访问级别={SecurityConfig.DATABASE_ACCESS_LEVEL}")
 
     async def check_operation(self, sql_query: str) -> bool:
         """
@@ -54,6 +64,13 @@ class SQLInterceptor:
                 
             if operation not in supported_operations:
                 raise SecurityException(f"不支持的SQL操作: {operation}")
+            
+            # 检查数据库范围限制
+            if self.database_checker:
+                is_allowed, violations = self.database_checker.check_query(sql_query)
+                if not is_allowed:
+                    violation_details = "; ".join(violations)
+                    raise SecurityException(f"数据库访问违规: {violation_details}")
             
             # 分析SQL风险
             risk_analysis = self.analyzer.analyze_risk(sql_query)

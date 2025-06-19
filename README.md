@@ -18,6 +18,7 @@ This project is a MySQL query server based on the MCP framework, supporting real
 - 丰富的MySQL元数据与结构查询API
 - 自动事务管理与回滚
 - 多级SQL风险控制与注入防护
+- **数据库隔离安全**：防止跨数据库访问，支持三级访问控制
 - 敏感信息自动隐藏与自定义
 - 灵活的环境变量配置
 - 完善的日志与错误处理
@@ -29,6 +30,7 @@ This project is a MySQL query server based on the MCP framework, supporting real
 - Rich MySQL metadata & schema query APIs
 - Automatic transaction management & rollback
 - Multi-level SQL risk control & injection protection
+- **Database Isolation Security**: Prevents cross-database access with 3-level access control
 - Automatic and customizable sensitive info masking
 - Flexible environment variable configuration
 - Robust logging & error handling
@@ -146,6 +148,8 @@ Default endpoint: http://127.0.0.1:3000/sse
 | MAX_SQL_LENGTH           | 最大SQL语句长度 / Max SQL length                      | 5000             |
 | BLOCKED_PATTERNS         | 阻止的SQL模式(逗号分隔) / Blocked SQL patterns        | (空/empty)       |
 | ENABLE_QUERY_CHECK       | 启用查询安全检查 / Enable query check (true/false)    | true             |
+| **ENABLE_DATABASE_ISOLATION** | **启用数据库隔离 / Enable database isolation (true/false)** | **false** |
+| **DATABASE_ACCESS_LEVEL** | **数据库访问级别 / Database access level (strict/restricted/permissive)** | **permissive** |
 | LOG_LEVEL                | 日志级别(DEBUG/INFO/...) / Log level                 | DEBUG            |
 
 > 注/Note: 部分云MySQL需指定`DB_AUTH_PLUGIN`为`mysql_native_password`。
@@ -185,9 +189,47 @@ When using `caching_sha2_password`, the `cryptography` package is required (alre
 pip install cryptography
 ```
 
-详细配置指南请参考：[MySQL 8.0 认证插件支持指南](docs/mysql8_authentication.md)
 
-For detailed configuration guide, see: [MySQL 8.0 Authentication Plugin Support Guide](docs/mysql8_authentication.md)
+### 数据库隔离安全 / Database Isolation Security
+
+本系统提供强大的数据库隔离功能，防止跨数据库访问，确保数据安全。
+
+This system provides robust database isolation features to prevent cross-database access and ensure data security.
+
+#### 访问级别 / Access Levels
+
+| 级别 / Level | 允许访问 / Allowed Access | 适用场景 / Use Case |
+|-------------|---------------------------|-------------------|
+| **strict** | 仅指定数据库 / Only specified database | 生产环境 / Production |
+| **restricted** | 指定数据库 + 系统库 / Specified + system databases | 开发环境 / Development |
+| **permissive** | 所有数据库 / All databases | 测试环境 / Testing |
+
+#### 启用数据库隔离 / Enable Database Isolation
+
+```bash
+# Docker 启用严格模式 / Docker with strict mode
+docker run -d \
+  -e MYSQL_DATABASE=your_database \
+  -e ENABLE_DATABASE_ISOLATION=true \
+  -e DATABASE_ACCESS_LEVEL=strict \
+  mangooer/mysql-mcp-server-sse:latest
+
+# 生产环境自动启用 / Auto-enable in production
+docker run -d \
+  -e ENV_TYPE=production \
+  -e MYSQL_DATABASE=your_database \
+  mangooer/mysql-mcp-server-sse:latest
+```
+
+**安全效果 / Security Effects**：
+- ✅ 阻止 `SHOW DATABASES` / Blocks `SHOW DATABASES`
+- ✅ 阻止 `SELECT * FROM mysql.user` / Blocks `SELECT * FROM mysql.user`
+- ✅ 阻止 `SHOW TABLES FROM other_db` / Blocks `SHOW TABLES FROM other_db`
+- ✅ 允许当前数据库操作 / Allows current database operations
+
+> 🔒 **重要**：生产环境(`ENV_TYPE=production`)会自动启用数据库隔离，使用 `restricted` 模式。
+> 
+> 🔒 **Important**: Production environment (`ENV_TYPE=production`) automatically enables database isolation with `restricted` mode.
 
 ---
 
@@ -222,14 +264,20 @@ For detailed configuration guide, see: [MySQL 8.0 Authentication Plugin Support 
 - 多级SQL风险等级（LOW/MEDIUM/HIGH/CRITICAL）
 - SQL注入与危险操作拦截
 - WHERE子句强制检查
+- **数据库隔离安全**：三级访问控制（strict/restricted/permissive）
+- **跨数据库访问防护**：阻止未授权的数据库访问
 - 敏感信息自动隐藏（支持自定义字段）
 - 生产环境默认只允许低风险操作
+- **生产环境自动启用数据库隔离**
 
 - Multi-level SQL risk levels (LOW/MEDIUM/HIGH/CRITICAL)
 - SQL injection & dangerous operation interception
 - Mandatory WHERE clause check
+- **Database Isolation Security**: 3-level access control (strict/restricted/permissive)
+- **Cross-database Access Protection**: Blocks unauthorized database access
 - Automatic sensitive info masking (customizable fields)
 - Production allows only low-risk operations by default
+- **Auto-enable database isolation in production**
 
 ---
 
@@ -260,6 +308,18 @@ A: 设置SENSITIVE_INFO_FIELDS，如SENSITIVE_INFO_FIELDS=password,token
 
 Q: How to customize sensitive fields?
 A: Set SENSITIVE_INFO_FIELDS, e.g. SENSITIVE_INFO_FIELDS=password,token
+
+### Q: 如何启用数据库隔离？
+A: 设置ENABLE_DATABASE_ISOLATION=true和DATABASE_ACCESS_LEVEL=strict，或使用ENV_TYPE=production自动启用。
+
+Q: How to enable database isolation?
+A: Set ENABLE_DATABASE_ISOLATION=true and DATABASE_ACCESS_LEVEL=strict, or use ENV_TYPE=production for auto-enable.
+
+### Q: 数据库隔离后无法查询系统表？
+A: strict模式禁止系统表访问，可改为restricted模式，或检查是否确实需要系统表访问权限。
+
+Q: Cannot query system tables after enabling database isolation?
+A: strict mode blocks system table access. Use restricted mode or verify if system table access is actually needed.
 
 ### Q: limit参数报错？
 A: limit必须为非负整数。

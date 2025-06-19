@@ -109,6 +109,17 @@ class SecurityConfig:
     
     # 查询检查
     ENABLE_QUERY_CHECK = os.getenv('ENABLE_QUERY_CHECK', 'true').lower() in ('true', 'yes', '1')
+    
+    # 数据库隔离配置
+    ENABLE_DATABASE_ISOLATION = os.getenv('ENABLE_DATABASE_ISOLATION', 'false').lower() in ('true', 'yes', '1')
+    DATABASE_ACCESS_LEVEL = os.getenv('DATABASE_ACCESS_LEVEL', 'permissive').lower()
+    
+    # 生产环境强制数据库隔离
+    if ENV_TYPE == EnvironmentType.PRODUCTION and not os.getenv('DATABASE_ACCESS_LEVEL'):
+        DATABASE_ACCESS_LEVEL = 'restricted'  # 生产环境默认使用限制模式
+        ENABLE_DATABASE_ISOLATION = True
+        logger = __import__('logging').getLogger("mysql_server")
+        logger.info("生产环境自动启用数据库隔离，访问级别设为 restricted")
 
 # SQL操作配置
 class SQLConfig:
