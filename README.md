@@ -150,6 +150,45 @@ Default endpoint: http://127.0.0.1:3000/sse
 
 > 注/Note: 部分云MySQL需指定`DB_AUTH_PLUGIN`为`mysql_native_password`。
 
+### MySQL 8.0 认证支持 / MySQL 8.0 Authentication Support
+
+本系统完全支持 MySQL 8.0 的认证机制。MySQL 8.0 默认使用 `caching_sha2_password` 认证插件，提供更高的安全性。
+
+This system fully supports MySQL 8.0 authentication mechanisms. MySQL 8.0 uses `caching_sha2_password` by default for enhanced security.
+
+#### 认证插件对比 / Authentication Plugin Comparison
+
+| 认证插件 / Plugin | 安全性 / Security | 兼容性 / Compatibility | 依赖要求 / Dependencies |
+|------------------|-------------------|------------------------|------------------------|
+| `mysql_native_password` | 中等 / Medium | 高 / High | 无 / None |
+| `caching_sha2_password` | 高 / High | 中等 / Medium | cryptography |
+
+#### 配置建议 / Configuration Recommendations
+
+**生产环境 / Production**（推荐 / Recommended）：
+```ini
+DB_AUTH_PLUGIN=caching_sha2_password
+```
+
+**开发环境 / Development**（简化配置 / Simplified）：
+```ini
+DB_AUTH_PLUGIN=mysql_native_password
+```
+
+#### 依赖安装 / Dependency Installation
+
+使用 `caching_sha2_password` 时需要安装 `cryptography` 包（已包含在 requirements.txt 中）：
+
+When using `caching_sha2_password`, the `cryptography` package is required (already included in requirements.txt):
+
+```bash
+pip install cryptography
+```
+
+详细配置指南请参考：[MySQL 8.0 认证插件支持指南](docs/mysql8_authentication.md)
+
+For detailed configuration guide, see: [MySQL 8.0 Authentication Plugin Support Guide](docs/mysql8_authentication.md)
+
 ---
 
 ## 6. 自动化与资源管理优化 / Automation & Resource Management Enhancements

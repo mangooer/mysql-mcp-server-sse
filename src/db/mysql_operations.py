@@ -64,8 +64,27 @@ def get_db_config():
         'db': config['database'],  # 'database' -> 'db'
         'port': config['port'],
         'connect_timeout': config.get('connection_timeout', 5),  # 'connection_timeout' -> 'connect_timeout'
-        # auth_plugin在aiomysql中不直接支持，忽略此参数
+        'charset': 'utf8mb4',  # 确保字符集支持
     }
+    
+    # MySQL 8.0 认证插件支持
+    # 如果指定了认证插件且不是默认的mysql_native_password，则添加到配置中
+    auth_plugin = config.get('auth_plugin', 'mysql_native_password')
+    if auth_plugin != 'mysql_native_password':
+        # 对于caching_sha2_password等现代认证插件，需要确保cryptography包可用
+        try:
+            import cryptography
+            # 添加认证插件配置以支持caching_sha2_password
+            aiomysql_config.update({
+                'auth_plugin': auth_plugin
+            })
+            logger.debug(f"使用认证插件: {auth_plugin} (已检测到 cryptography 包)")
+        except ImportError:
+            logger.warning(f"检测到认证插件 {auth_plugin}，但未安装 cryptography 包")
+            logger.warning("将回退到 mysql_native_password 认证方式")
+            logger.warning("要完全支持 MySQL 8.0 认证，请安装: pip install cryptography")
+    else:
+        logger.debug(f"使用认证插件: {auth_plugin}")
     
     return aiomysql_config
 
@@ -176,7 +195,17 @@ async def init_db_pool(min_size: Optional[int] = None, max_size: Optional[int] =
         elif "Can't connect" in error_msg or "Connection refused" in error_msg:
             raise MySQLServerError("无法连接到MySQL服务器，请检查服务是否启动")
         elif "Authentication plugin" in error_msg:
-            raise MySQLAuthPluginError(f"认证插件问题: {error_msg}，请尝试修改用户认证方式为mysql_native_password")
+            current_auth = DatabaseConfig.AUTH_PLUGIN
+            error_detail = f"认证插件问题: {error_msg}"
+            if current_auth == 'caching_sha2_password':
+                error_detail += "\n解决方案："
+                error_detail += "\n1. 确保已安装 cryptography 包: pip install cryptography"
+                error_detail += "\n2. 或者修改用户认证方式为 mysql_native_password"
+                error_detail += "\n3. 或者在 .env 中设置 DB_AUTH_PLUGIN=mysql_native_password"
+            else:
+                error_detail += f"\n当前认证插件配置: {current_auth}"
+                error_detail += "\n请检查 MySQL 用户的认证插件设置是否匹配"
+            raise MySQLAuthPluginError(error_detail)
         else:
             raise MySQLConnectionError(f"数据库连接失败: {error_msg}")
     except Exception as e:
@@ -239,7 +268,17 @@ async def get_db_connection(require_database: bool = True):
         elif "Can't connect" in error_msg or "Connection refused" in error_msg:
             raise MySQLServerError("无法连接到MySQL服务器，请检查服务是否启动")
         elif "Authentication plugin" in error_msg:
-            raise MySQLAuthPluginError(f"认证插件问题: {error_msg}，请尝试修改用户认证方式为mysql_native_password")
+            current_auth = DatabaseConfig.AUTH_PLUGIN
+            error_detail = f"认证插件问题: {error_msg}"
+            if current_auth == 'caching_sha2_password':
+                error_detail += "\n解决方案："
+                error_detail += "\n1. 确保已安装 cryptography 包: pip install cryptography"
+                error_detail += "\n2. 或者修改用户认证方式为 mysql_native_password"
+                error_detail += "\n3. 或者在 .env 中设置 DB_AUTH_PLUGIN=mysql_native_password"
+            else:
+                error_detail += f"\n当前认证插件配置: {current_auth}"
+                error_detail += "\n请检查 MySQL 用户的认证插件设置是否匹配"
+            raise MySQLAuthPluginError(error_detail)
         else:
             raise MySQLConnectionError(f"数据库连接失败: {error_msg}")
     except Exception as e:
